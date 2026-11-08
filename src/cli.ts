@@ -22,6 +22,7 @@ import { KeychainTimeoutError } from './keychain.js';
 import { MigrationError, runMigrations } from './migrations.js';
 import { countDailyIfNeeded } from './dailyCounting.js';
 import { PluginLoadError } from './plugins.js';
+import { InvalidProxyConfigurationError } from './serviceProxy.js';
 import { VERSION } from './version.js';
 
 // Node starts its inspector (a local debug port with full access to the
@@ -37,7 +38,7 @@ let deps: CliDependencies;
 try {
   deps = await createDefaultDependencies();
 } catch (error) {
-  if (error instanceof PluginLoadError) {
+  if (error instanceof PluginLoadError || error instanceof InvalidProxyConfigurationError) {
     console.error(`Error: ${error.message}`);
     process.exit(1);
   }

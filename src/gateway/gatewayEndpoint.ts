@@ -25,6 +25,7 @@ import {
 } from '../curlInjection.js';
 import { PermissionCheckError } from '../permissions.js';
 import { ErrorMessages } from '../errorMessages.js';
+import { InvalidProxyConfigurationError } from '../serviceProxy.js';
 import { GATEWAY_ACCOUNT_HEADER } from './account.js';
 import { decodeHeaderValue } from './headerEncoding.js';
 import { GATEWAY_PASSWORD_HEADER } from './password.js';
@@ -434,6 +435,7 @@ export async function handleGatewayRequest(
     }
     if (
       error instanceof UrlExtractionFailedError ||
+      error instanceof InvalidProxyConfigurationError ||
       error instanceof NoServiceForUrlError ||
       error instanceof NoCredentialsForServiceError ||
       error instanceof CredentialsExpiredError ||

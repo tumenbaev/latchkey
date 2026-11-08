@@ -20,6 +20,7 @@ import { handleLatchkeyRequest } from './latchkeyEndpoint.js';
 import { decodeHeaderValue } from './headerEncoding.js';
 import { GATEWAY_PASSWORD_HEADER, passwordsMatch } from './password.js';
 import { createServiceRegistry } from '../serviceRegistry.js';
+import { InvalidProxyConfigurationError } from '../serviceProxy.js';
 import {
   dispatchExtensionRequest,
   loadExtensions,
@@ -165,14 +166,23 @@ export async function startGateway(
     // credential store and to permissions.json already do. Each request gets
     // its own: a shared one would be rebuilt underneath requests already in
     // flight.
-    const requestDeps: CliDependencies = {
-      ...deps,
-      registry: createServiceRegistry(
-        deps.baseServices,
-        deps.config.configPath,
-        deps.config.hideBuiltinServices
-      ),
-    };
+    let requestDeps: CliDependencies;
+    try {
+      requestDeps = {
+        ...deps,
+        registry: createServiceRegistry(
+          deps.baseServices,
+          deps.config.configPath,
+          deps.config.hideBuiltinServices
+        ),
+      };
+    } catch (error) {
+      if (error instanceof InvalidProxyConfigurationError) {
+        sendErrorResponse(response, 400, error.message);
+        return;
+      }
+      throw error;
+    }
 
     // Latchkey RPC endpoint
     if (rawUrl === '/latchkey/' || rawUrl === '/latchkey') {

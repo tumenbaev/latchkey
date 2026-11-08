@@ -246,6 +246,7 @@ export interface ServiceCapabilities {
 
 export interface ServicesInfoResult {
   readonly type: 'built-in' | 'user-registered';
+  readonly proxyEnv?: string;
   readonly baseApiUrls: readonly string[];
   readonly authOptions: readonly string[];
   readonly capabilities: ServiceCapabilities;
@@ -288,6 +289,9 @@ export async function servicesInfo(
 
   return {
     type: serviceType,
+    ...(service instanceof RegisteredService && service.proxyEnv !== undefined
+      ? { proxyEnv: service.proxyEnv }
+      : {}),
     baseApiUrls: service.baseApiUrls.map(formatBaseApiUrl),
     authOptions,
     capabilities: { detectsLoginAccount: detectsLoginAccount(service) },

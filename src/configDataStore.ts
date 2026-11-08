@@ -10,11 +10,13 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { writeFileAtomic } from './atomicWrite.js';
+import { validateProxyEnvironmentVariable } from './serviceProxy.js';
 
 const RegisteredServiceEntrySchema = z.object({
   baseApiUrl: z.string(),
   serviceFamily: z.string().optional(),
   loginUrl: z.string().optional(),
+  proxyEnv: z.string().optional(),
   // When set (together with loginUrl and without a service family), the service
   // gets one of the generic browser logins. The parameters are only checked
   // against the named flow's schema when the flow is resolved, so that a config
@@ -102,12 +104,41 @@ export function loadRegisteredServices(
   configPath: string
 ): ReadonlyMap<string, RegisteredServiceEntry> {
   const raw = readConfigFile(configPath);
+  if (typeof raw.registeredServices === 'object' && raw.registeredServices !== null) {
+    for (const [name, entry] of Object.entries(raw.registeredServices as Record<string, unknown>)) {
+      if (typeof entry === 'object' && entry !== null && 'proxyEnv' in entry) {
+        const proxyEnv = entry.proxyEnv;
+        validateProxyEnvironmentVariable(typeof proxyEnv === 'string' ? proxyEnv : '', name);
+      }
+    }
+  }
   try {
     const registeredServices = RegisteredServicesSchema.parse(raw.registeredServices ?? {});
     return new Map(Object.entries(registeredServices));
   } catch {
     return new Map();
   }
+}
+
+export function updateRegisteredServiceProxy(
+  configPath: string,
+  name: string,
+  proxyEnv: string | undefined
+): boolean {
+  const config = readConfigFile(configPath);
+  const services = config.registeredServices;
+  if (typeof services !== 'object' || services === null || Array.isArray(services)) {
+    return false;
+  }
+  const entries = services as Record<string, unknown>;
+  const entry = entries[name];
+  if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+    return false;
+  }
+  const { proxyEnv: _proxyEnv, ...rest } = entry as Record<string, unknown>;
+  entries[name] = proxyEnv === undefined ? rest : { ...rest, proxyEnv };
+  writeConfigFile(configPath, config);
+  return true;
 }
 
 export function saveRegisteredService(

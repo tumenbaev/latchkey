@@ -232,6 +232,44 @@ latchkey curl https://mastodon.social/api/v1/timelines/public?limit=2
 You can also configure browser login flows for registered services. For details,
 see `latchkey services register --help`.
 
+### Per-service API proxies
+
+User-registered services can name an environment variable containing a proxy URL:
+
+```bash
+export SMARKETS_ACCESS_PROXY='socks5h://127.0.0.1:8888'
+latchkey services register grafana \
+  --base-api-url='https://grafana.smarkets.tech/' \
+  --proxy-env SMARKETS_ACCESS_PROXY
+
+# After configuring credentials as usual, agents need only:
+latchkey curl https://grafana.smarkets.tech/api/health
+
+latchkey services proxy grafana --proxy-env OTHER_PROXY  # change it
+latchkey services proxy grafana --clear                  # remove it
+```
+
+This stores `"proxyEnv": "SMARKETS_ACCESS_PROXY"` in the service's
+`registeredServices` entry in `config.json`. HTTP(S) and SOCKS proxy URLs are
+supported; `socks5h://` resolves the destination hostname through the proxy.
+
+Only the variable name is stored and shown by `services info`, not its value. Names
+must match `[A-Za-z_][A-Za-z0-9_]*`. The variable is resolved on the host executing
+the request: with a gateway, `127.0.0.1` means the gateway host. Configure services
+on that host; registration and proxy changes are unavailable in gateway client mode.
+
+The configured proxy applies only to API requests through `latchkey curl`, not
+browser login, credential validation, or refresh. It overrides inherited proxy
+settings, `NO_PROXY`, and a caller's `--proxy`. A missing, empty, or invalid proxy
+URL fails the request without falling back to a direct connection. Services without
+a proxy setting are unchanged. Requests without credentials require the existing
+`passthroughUnknown` setting; when several services match, the first candidate's
+proxy is used for such passthrough requests. This is routing configuration, not a
+security boundary against users who can bypass Latchkey.
+
+`latchkey --dry-run curl <url>` also reports the configured `proxyEnv` name
+without exposing the proxy URL or sending the API request.
+
 
 ### Plugins
 

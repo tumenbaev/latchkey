@@ -22,6 +22,7 @@ import {
 } from '../curlInjection.js';
 import type { EncryptedStorage } from '../encryptedStorage.js';
 import { PermissionCheckError } from '../permissions.js';
+import { InvalidProxyConfigurationError } from '../serviceProxy.js';
 import { buildCurlArguments, type GatewayOptions } from './gatewayEndpoint.js';
 import {
   InvalidPermissionsOverrideError,
@@ -156,6 +157,7 @@ const KNOWN_ERROR_CLASSES: readonly (abstract new (...args: never[]) => Error)[]
   CredentialsExpiredError,
   AmbiguousAccountError,
   ApiCredentialsUsageError,
+  InvalidProxyConfigurationError,
 ];
 
 /**

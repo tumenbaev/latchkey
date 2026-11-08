@@ -22,6 +22,8 @@ import type { PermissionCheckMetadata } from './permissions.js';
 import { addDiagnosticHeaders } from './diagnosticHeaders.js';
 import type { ServiceRegistry } from './serviceRegistry.js';
 import type { Service } from './services/core/base.js';
+import { RegisteredService } from './services/core/registered.js';
+import { configureServiceProxy } from './serviceProxy.js';
 
 export class RequestNotPermittedError extends Error {
   constructor() {
@@ -84,6 +86,7 @@ export interface PermissionCheckDependencies {
 
 export interface CurlInvocationPreparation {
   readonly curlArguments: readonly string[];
+  readonly proxyEnv?: string;
   /**
    * Name of the service whose credentials were injected, or null when the
    * request passed through without any injection.
@@ -178,25 +181,35 @@ export async function ensureCurlRequestIsPermitted(
 export interface CurlDryRunReport {
   readonly credentialsInjected: boolean;
   readonly service: string | null;
+  readonly proxyEnv?: string;
 }
 
 export function buildCurlDryRunReport(preparation: CurlInvocationPreparation): CurlDryRunReport {
   return {
     credentialsInjected: preparation.injectedServiceName !== null,
     service: preparation.injectedServiceName,
+    ...(preparation.proxyEnv === undefined ? {} : { proxyEnv: preparation.proxyEnv }),
   };
 }
 
 function buildPreparation(
   curlArguments: readonly string[],
   injectedServiceName: string | null,
-  diagnosticHeaders: boolean
+  diagnosticHeaders: boolean,
+  service?: Service
 ): CurlInvocationPreparation {
+  const proxyService = service instanceof RegisteredService ? service : undefined;
+  const proxyEnv = proxyService?.proxyEnv;
+  const routedArguments =
+    proxyService !== undefined && proxyEnv !== undefined
+      ? configureServiceProxy(curlArguments, proxyEnv, proxyService.name)
+      : curlArguments;
   return {
     curlArguments: diagnosticHeaders
-      ? addDiagnosticHeaders(curlArguments, { matchedServiceName: injectedServiceName })
-      : [...curlArguments],
+      ? addDiagnosticHeaders(routedArguments, { matchedServiceName: injectedServiceName })
+      : [...routedArguments],
     injectedServiceName,
+    ...(proxyEnv === undefined ? {} : { proxyEnv }),
   };
 }
 
@@ -301,7 +314,7 @@ export async function prepareCurlInvocation(
   if (chosen === null) {
     if (dependencies.passthroughUnknown) {
       await ensureRequestIsPermitted();
-      return buildPreparation(curlArguments, null, dependencies.diagnosticHeaders);
+      return buildPreparation(curlArguments, null, dependencies.diagnosticHeaders, firstCandidate);
     }
     throw new NoCredentialsForServiceError(firstCandidate.name, requestedAccount);
   }
@@ -333,6 +346,7 @@ export async function prepareCurlInvocation(
   return buildPreparation(
     await apiCredentials.injectIntoCurlCall(curlArguments, outOfBandRequestBody),
     service.name,
-    dependencies.diagnosticHeaders
+    dependencies.diagnosticHeaders,
+    service
   );
 }

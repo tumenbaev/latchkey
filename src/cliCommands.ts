@@ -44,7 +44,15 @@ import {
   InvalidBrowserStateError,
 } from './browserStateImport.js';
 import { Config, CONFIG } from './config.js';
-import { deleteRegisteredService, saveRegisteredService } from './configDataStore.js';
+import {
+  deleteRegisteredService,
+  saveRegisteredService,
+  updateRegisteredServiceProxy,
+} from './configDataStore.js';
+import {
+  InvalidProxyConfigurationError,
+  validateProxyEnvironmentVariable,
+} from './serviceProxy.js';
 import {
   BrowserDisabledError,
   BrowserFlowsNotSupportedError,
@@ -246,6 +254,22 @@ function refuseInGatewayMode(deps: CliDependencies, commandName: string): void {
     const error = new GatewayCommandNotSupportedError(commandName);
     deps.errorLog(`Error: ${error.message}`);
     deps.exit(1);
+  }
+}
+
+function validateProxyEnvironmentVariableOrExit(
+  deps: CliDependencies,
+  proxyEnv: string,
+  serviceName: string
+): void {
+  try {
+    validateProxyEnvironmentVariable(proxyEnv, serviceName);
+  } catch (error) {
+    if (error instanceof InvalidProxyConfigurationError) {
+      deps.errorLog(`Error: ${error.message}`);
+      deps.exit(1);
+    }
+    throw error;
   }
 }
 
@@ -597,6 +621,7 @@ export function registerCommands(program: Command, deps: CliDependencies): void 
       `Generic browser login, instead of a service family: ${LOGIN_FLOWS.map((flow) => flow.flowName).join(', ')}`
     )
     .option('--login-flow-params <json>', 'JSON object with the parameters of --login-flow')
+    .option('--proxy-env <name>', 'Environment variable containing the proxy URL for API requests')
     .addHelpText('after', `\n${REGISTRATION_MODES_HELP}\n\n${formatLoginFlowsHelp()}`)
     .action(
       (
@@ -607,6 +632,7 @@ export function registerCommands(program: Command, deps: CliDependencies): void 
           loginUrl?: string;
           loginFlow?: string;
           loginFlowParams?: string;
+          proxyEnv?: string;
         }
       ) => {
         refuseInGatewayMode(deps, 'services register');
@@ -619,6 +645,10 @@ export function registerCommands(program: Command, deps: CliDependencies): void 
             deps.exit(1);
           }
           throw error;
+        }
+
+        if (options.proxyEnv !== undefined) {
+          validateProxyEnvironmentVariableOrExit(deps, options.proxyEnv, serviceName);
         }
 
         let familyService: Service | undefined;
@@ -683,7 +713,12 @@ export function registerCommands(program: Command, deps: CliDependencies): void 
         const registeredService = new RegisteredService(
           serviceName,
           baseApiUrl,
-          buildRegisteredServiceOptions(familyService, options.loginUrl, chosenLoginFlow?.flow)
+          buildRegisteredServiceOptions(
+            familyService,
+            options.loginUrl,
+            chosenLoginFlow?.flow,
+            options.proxyEnv
+          )
         );
 
         try {
@@ -700,6 +735,7 @@ export function registerCommands(program: Command, deps: CliDependencies): void 
           baseApiUrl,
           serviceFamily: options.serviceFamily,
           loginUrl: options.loginUrl,
+          proxyEnv: options.proxyEnv,
           loginFlow:
             options.loginFlow === undefined
               ? undefined
@@ -709,6 +745,39 @@ export function registerCommands(program: Command, deps: CliDependencies): void 
         deps.log(`Service '${serviceName}' registered.`);
       }
     );
+
+  servicesCommand
+    .command('proxy')
+    .description('Set or clear the proxy environment variable for a registered service.')
+    .argument('<service_name>', 'Name of the registered service')
+    .option('--proxy-env <name>', 'Environment variable containing the proxy URL')
+    .option('--clear', 'Remove the configured proxy')
+    .action((serviceName: string, options: { proxyEnv?: string; clear?: boolean }) => {
+      refuseInGatewayMode(deps, 'services proxy');
+      if ((options.proxyEnv !== undefined) === (options.clear === true)) {
+        deps.errorLog('Error: Specify exactly one of --proxy-env or --clear.');
+        deps.exit(1);
+      }
+      const service = deps.registry.getByName(serviceName);
+      if (service === null) {
+        deps.errorLog(`Error: Unknown service: ${serviceName}`);
+        deps.exit(1);
+      }
+      if (!(service instanceof RegisteredService)) {
+        deps.errorLog(
+          `Error: Service '${serviceName}' is built-in and cannot have a proxy configured.`
+        );
+        deps.exit(1);
+      }
+      if (options.proxyEnv !== undefined) {
+        validateProxyEnvironmentVariableOrExit(deps, options.proxyEnv, serviceName);
+      }
+      if (!updateRegisteredServiceProxy(deps.config.configPath, serviceName, options.proxyEnv)) {
+        deps.errorLog(`Error: Registered service '${serviceName}' is not present in config.`);
+        deps.exit(1);
+      }
+      deps.log(`Proxy configuration for '${serviceName}' updated.`);
+    });
 
   servicesCommand
     .command('deregister')
@@ -1245,6 +1314,7 @@ export function registerCommands(program: Command, deps: CliDependencies): void 
         }
         if (
           error instanceof UrlExtractionFailedError ||
+          error instanceof InvalidProxyConfigurationError ||
           error instanceof NoServiceForUrlError ||
           error instanceof NoCredentialsForServiceError ||
           error instanceof CredentialsExpiredError ||

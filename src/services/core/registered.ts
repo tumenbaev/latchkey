@@ -22,7 +22,7 @@ import type { LoginFlow } from './loginFlows/base.js';
  * two shapes would still accept an object carrying both, because excess
  * property checking against a union permits any property known to some member.
  */
-export type RegisteredServiceOptions =
+export type RegisteredServiceOptions = { readonly proxyEnv?: string } & (
   | {
       /** Built-in service to use as a template, for self-hosted instances. */
       readonly familyService: Service;
@@ -36,7 +36,9 @@ export type RegisteredServiceOptions =
       /** Page the flow starts from. A flow has nowhere to begin without one. */
       readonly loginUrl: string;
       readonly familyService?: never;
-    };
+    }
+  | { readonly familyService?: never; readonly loginFlow?: never; readonly loginUrl?: never }
+);
 
 /**
  * Build options from values that are each independently optional, as they come
@@ -50,15 +52,16 @@ export type RegisteredServiceOptions =
 export function buildRegisteredServiceOptions(
   familyService: Service | undefined,
   loginUrl: string | undefined,
-  loginFlow: LoginFlow | undefined
+  loginFlow: LoginFlow | undefined,
+  proxyEnv?: string
 ): RegisteredServiceOptions | undefined {
   if (familyService !== undefined) {
-    return { familyService, loginUrl };
+    return { familyService, loginUrl, proxyEnv };
   }
   if (loginFlow !== undefined && loginUrl !== undefined) {
-    return { loginFlow, loginUrl };
+    return { loginFlow, loginUrl, proxyEnv };
   }
-  return undefined;
+  return proxyEnv === undefined ? undefined : { proxyEnv };
 }
 
 export class RegisteredService extends Service {
@@ -68,6 +71,7 @@ export class RegisteredService extends Service {
   readonly loginUrl: string;
   readonly info: string;
   readonly credentialCheckCurlArguments: readonly string[];
+  readonly proxyEnv: string | undefined;
 
   private readonly familyService: Service | undefined;
 
@@ -84,6 +88,7 @@ export class RegisteredService extends Service {
         : undefined;
 
     this.name = name;
+    this.proxyEnv = options?.proxyEnv;
     this.displayName = name;
     this.baseApiUrls = [baseApiUrl];
     this.loginUrl = loginUrl ?? '';

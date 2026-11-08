@@ -233,7 +233,8 @@ export function loadRegisteredServicesIntoServiceRegistry(
       buildRegisteredServiceOptions(
         familyService,
         entry.loginUrl,
-        resolveStoredLoginFlow(entry.loginFlow)
+        resolveStoredLoginFlow(entry.loginFlow),
+        entry.proxyEnv
       )
     );
     registry.addService(registeredService);
